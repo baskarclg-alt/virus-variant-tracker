@@ -3,5 +3,8 @@ uvicorn
 biopython
 pandas
 plotly
-scipy
 matplotlib
+numpy
+scipy
+jinja2
+python-multipart

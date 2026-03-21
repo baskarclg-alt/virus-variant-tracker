@@ -1,79 +1,65 @@
 <!DOCTYPE html>
 <html>
 <head>
-<style>
-body {background:#020617;color:white;font-family:Arial;margin:0;}
-.header {padding:20px;text-align:center;background:#0f172a;font-size:22px;}
-.container {padding:20px;}
-.card {background:#1e293b;padding:15px;margin:10px;border-radius:10px;}
-.grid {display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
-iframe {width:100%;height:350px;border:none;}
-table {width:100%;border-collapse:collapse;}
-th,td {padding:8px;border-bottom:1px solid #444;}
-tr:hover {background:#334155;}
-</style>
-
-<script>
-function showDetails(pos, ref, mut){
-    alert("Mutation: " + ref + pos + mut);
-}
-</script>
-
+<title>Virus Variant Tracker</title>
 </head>
 
-<body>
+<body style="background:#0b1220;color:white;font-family:sans-serif">
 
-<div class="header">🧬 Virus Variant Tracker</div>
+<h1>🧬 Virus Variant Tracker</h1>
 
-<div class="container">
+<p>Total Sequences: {{ total_sequences }}</p>
+<p>Total Mutations: {{ total_mutations }}</p>
+<p>Unique Mutations: {{ unique_mutations }}</p>
+<p>Avg Mutations: {{ avg_mutations }}</p>
 
-<!-- 🔥 STATS -->
-<div class="grid">
-<div class="card">Total Sequences<br><b>{{total_sequences}}</b></div>
-<div class="card">Total Mutations<br><b>{{total_mutations}}</b></div>
-<div class="card">Avg Length<br><b>{{avg_length}}</b></div>
-<div class="card">Reference Length<br><b>{{ref_length}}</b></div>
-</div>
+<hr>
 
-<div class="card">
-<h3>📊 Mutation Chart</h3>
-<iframe src="{{chart}}"></iframe>
-</div>
+<h2>📁 Download Report</h2>
+<a href="{{ csv }}" download>⬇ Download CSV</a>
 
-<div class="card">
-<h3>🔥 Mutation Density</h3>
-<iframe src="{{heatmap}}"></iframe>
-</div>
+<h2>📊 Mutation Chart</h2>
+<iframe src="{{ chart }}" width="100%" height="400"></iframe>
+<a href="{{ chart }}" download>⬇ Download Chart</a>
 
-<div class="card">
-<h3>🌳 Sequence Clustering</h3>
-{% if tree %}
-<img src="{{tree}}" width="100%">
-{% else %}
-<p>Tree not available</p>
-{% endif %}
-</div>
+<h2>🔥 Mutation Density</h2>
+<iframe src="{{ heatmap }}" width="100%" height="400"></iframe>
+<a href="{{ heatmap }}" download>⬇ Download Heatmap</a>
 
-<div class="card">
-<h3>📋 Mutation Table (Top 100)</h3>
-<table>
-<tr><th>Pos</th><th>Ref</th><th>Mut</th></tr>
-{% for r in table %}
-<tr onclick="showDetails('{{r.position}}','{{r.ref}}','{{r.mut}}')">
-<td>{{r.position}}</td>
-<td>{{r.ref}}</td>
-<td>{{r.mut}}</td>
+<h2>🌳 Phylogenetic Tree</h2>
+<img src="{{ tree }}" width="900">
+<a href="{{ tree }}" download>⬇ Download Tree</a>
+
+<hr>
+
+<h2>📍 Top Positions</h2>
+<table border="1">
+<tr><th>Position</th><th>Count</th></tr>
+{% for row in top_positions %}
+<tr><td>{{ row.Position }}</td><td>{{ row.Count }}</td></tr>
+{% endfor %}
+</table>
+
+<h2>🧬 Top Mutation Types</h2>
+<table border="1">
+<tr><th>Mutation</th><th>Count</th></tr>
+{% for row in top_types %}
+<tr><td>{{ row.Mutation }}</td><td>{{ row.Count }}</td></tr>
+{% endfor %}
+</table>
+
+<hr>
+
+<h2>🧬 Lineage Clustering</h2>
+<table border="1">
+<tr><th>Lineage</th><th>Count</th></tr>
+{% for row in lineage_summary %}
+<tr>
+<td>{{ row.Lineage }}</td>
+<td>{{ row.Count }}</td>
 </tr>
 {% endfor %}
 </table>
-</div>
-
-<div class="card">
-<h3>📥 Download</h3>
-<a href="{{csv}}" download style="color:lightgreen;">Download CSV</a>
-</div>
-
-</div>
 
 </body>
 </html>

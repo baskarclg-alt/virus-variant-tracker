@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 import os
 from Bio import SeqIO
 import pandas as pd
@@ -13,33 +13,70 @@ from scipy.cluster.hierarchy import linkage, dendrogram
 app = FastAPI()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
+templates = Jinja2Templates(directory="templates")
+
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 DATA_FOLDER = os.path.join(BASE_DIR, "data")
-
-templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_FOLDER), name="uploads")
 
 # -------------------------------
 def load_reference():
-    ref_path = os.path.join(DATA_FOLDER, "reference.fasta")
-    return str(next(SeqIO.parse(ref_path, "fasta")).seq[:10000])  # 🔥 LIMIT
+    try:
+        ref = next(SeqIO.parse(os.path.join(DATA_FOLDER, "reference.fasta"), "fasta"))
+        return str(ref.seq)
+    except:
+        return ""
 
 # -------------------------------
-def find_mutations(ref, seq):
-    muts, table = [], []
+def find_mutations(ref, seq, limit=3000):
+    ref = ref[:limit]
+    seq = seq[:limit]
 
-    seq = seq[:10000]  # 🔥 LIMIT
+    muts = []
+    table = []
 
     for i in range(min(len(ref), len(seq))):
-        if ref[i] != seq[i]:
-            m = f"{ref[i]}{i+1}{seq[i]}"
-            muts.append(m)
-            table.append({"position": i+1, "ref": ref[i], "mut": seq[i]})
+        r = ref[i]
+        s = seq[i]
+
+        if r not in "ATGC" or s not in "ATGC":
+            continue
+
+        if r != s:
+            mut_type = f"{r}>{s}"
+
+            muts.append((i+1, mut_type))
+
+            table.append({
+                "position": i+1,
+                "ref": r,
+                "mut": s,
+                "type": mut_type
+            })
 
     return muts, table
+
+# -------------------------------
+def safe_lineage(mut_counts):
+    try:
+        df = pd.DataFrame({"mut": mut_counts})
+
+        if df["mut"].nunique() < 4:
+            return ["Lineage-A"] * len(mut_counts)
+
+        df["Lineage"] = pd.qcut(
+            df["mut"],
+            4,
+            labels=["Lineage-A", "Lineage-B", "Lineage-C", "Lineage-D"],
+            duplicates="drop"
+        )
+
+        return df["Lineage"].astype(str).tolist()
+
+    except:
+        return ["Lineage-A"] * len(mut_counts)
 
 # -------------------------------
 @app.get("/", response_class=HTMLResponse)
@@ -51,76 +88,88 @@ def home(request: Request):
 async def upload(request: Request, file: UploadFile = File(...)):
 
     try:
+        # SAVE FILE
         path = os.path.join(UPLOAD_FOLDER, file.filename)
 
         with open(path, "wb") as f:
             f.write(await file.read())
 
-        sequences = list(SeqIO.parse(path, "fasta"))[:30]  # 🔥 LIMIT SEQS
+        # READ USER FILE ONLY
+        sequences = list(SeqIO.parse(path, "fasta"))
+
+        if len(sequences) == 0:
+            return HTMLResponse("❌ No sequences found in file")
 
         ref = load_reference()
 
-        table = []
-        all_muts = set()
-        seq_lengths = []
-        seq_strings = []
         mut_counts = []
+        all_muts = []
+        table = []
+        seq_vectors = []
+        labels = []
 
-        for s in sequences:
-            seq = str(s.seq)
-            seq_strings.append(seq)
+        for i, s in enumerate(sequences):
+            seq = str(s.seq).upper()
 
-            seq_lengths.append(len(seq))
+            if len(seq) == 0:
+                continue
 
             muts, t = find_mutations(ref, seq)
 
-            all_muts.update(muts)
+            mut_counts.append(len(muts))
+            all_muts.extend(muts)
             table.extend(t)
 
-            mut_counts.append(len(muts))
+            seq_vectors.append([ord(c) for c in seq[:300]])
+            labels.append(f"Seq{i+1}")
+
+        if len(table) == 0:
+            return HTMLResponse("⚠️ No mutations detected")
+
+        lineage_list = safe_lineage(mut_counts)
 
         df = pd.DataFrame(table)
 
-        if df.empty:
-            return HTMLResponse("No mutations found")
-
-        # 🔥 STATS
+        # -------------------------------
         total_sequences = len(sequences)
         total_mutations = len(all_muts)
-        avg_length = sum(seq_lengths) // len(seq_lengths)
-        ref_length = len(ref)
-
-        df_display = df.head(100)
+        unique_mutations = len(set(all_muts))
+        avg_mutations = total_mutations // max(total_sequences, 1)
 
         # -------------------------------
-        # 📊 Chart
-        chart = px.bar(df["mut"].value_counts().head(10))
-        chart.write_html(os.path.join(UPLOAD_FOLDER, "chart.html"))
+        chart_path = os.path.join(UPLOAD_FOLDER, "chart.html")
+        px.bar(df["type"].value_counts().head(10)).write_html(chart_path)
+
+        heat_path = os.path.join(UPLOAD_FOLDER, "heatmap.html")
+        px.histogram(df, x="position", nbins=50).write_html(heat_path)
 
         # -------------------------------
-        # 🔥 Density
-        heat = px.histogram(x=df["position"], nbins=40)
-        heat.write_html(os.path.join(UPLOAD_FOLDER, "heatmap.html"))
-
-        # -------------------------------
-        # 🌳 LIGHT TREE
         tree_path = os.path.join(UPLOAD_FOLDER, "tree.png")
 
         try:
-            X = np.array([list(map(ord, s[:200])) for s in seq_strings])
+            if len(seq_vectors) > 2:
+                X = np.array(seq_vectors[:10])
+                Z = linkage(X, method='ward')
 
-            Z = linkage(X, method='ward')
-
-            plt.figure(figsize=(10,4))
-            dendrogram(Z, leaf_rotation=45)
-            plt.tight_layout()
-            plt.savefig(tree_path)
-            plt.close()
-
+                plt.figure(figsize=(12, 5))
+                dendrogram(Z, labels=labels[:10])
+                plt.tight_layout()
+                plt.savefig(tree_path)
+                plt.close()
         except:
-            tree_path = None
+            pass
 
         # -------------------------------
+        lineage_df = pd.DataFrame({"Lineage": lineage_list})
+        lineage_summary = lineage_df.value_counts().reset_index(name="Count")
+
+        top_positions = df["position"].value_counts().head(10).reset_index()
+        top_positions.columns = ["Position", "Count"]
+
+        top_types = df["type"].value_counts().head(10).reset_index()
+        top_types.columns = ["Mutation", "Count"]
+
+        # SAVE CSV
         df.to_csv(os.path.join(UPLOAD_FOLDER, "report.csv"), index=False)
 
         return templates.TemplateResponse("dashboard.html", {
@@ -128,13 +177,22 @@ async def upload(request: Request, file: UploadFile = File(...)):
             "chart": "/uploads/chart.html",
             "heatmap": "/uploads/heatmap.html",
             "tree": "/uploads/tree.png",
-            "table": df_display.to_dict(orient="records"),
+            "csv": "/download/csv",
 
             "total_sequences": total_sequences,
             "total_mutations": total_mutations,
-            "avg_length": avg_length,
-            "ref_length": ref_length
+            "unique_mutations": unique_mutations,
+            "avg_mutations": avg_mutations,
+
+            "top_positions": top_positions.to_dict(orient="records"),
+            "top_types": top_types.to_dict(orient="records"),
+            "lineage_summary": lineage_summary.to_dict(orient="records")
         })
 
     except Exception as e:
-        return HTMLResponse(f"Error: {str(e)}")
+        return HTMLResponse(f"❌ ERROR: {str(e)}")
+
+# -------------------------------
+@app.get("/download/csv")
+def download_csv():
+    return FileResponse("uploads/report.csv")
