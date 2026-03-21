@@ -8,12 +8,14 @@ import pandas as pd
 import plotly.express as px
 
 app = FastAPI()
-templates = Jinja2Templates(directory="templates")
 
-# 🔥 SAFE FOLDERS
+# 🔥 PATH FIX (RENDER SAFE)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 DATA_FOLDER = os.path.join(BASE_DIR, "data")
+
+templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -46,6 +48,7 @@ def find_mutations(ref, seq):
     return muts, table
 
 # -------------------------------
+# 🔥 HOME PAGE (NO 404 FIX)
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -63,7 +66,7 @@ async def upload(request: Request, file: UploadFile = File(...)):
         sequences = list(SeqIO.parse(path, "fasta"))
 
         if not sequences:
-            return HTMLResponse("❌ No sequences found in file")
+            return HTMLResponse("❌ No sequences found")
 
         ref = load_reference()
 
@@ -84,7 +87,7 @@ async def upload(request: Request, file: UploadFile = File(...)):
             table.extend(t)
 
         if len(table) == 0:
-            return HTMLResponse("⚠️ No mutations found (check your reference file)")
+            return HTMLResponse("⚠️ No mutations found")
 
         df = pd.DataFrame(table)
 
@@ -99,22 +102,13 @@ async def upload(request: Request, file: UploadFile = File(...)):
         # -------------------------------
         # 📊 Chart
         chart_path = os.path.join(UPLOAD_FOLDER, "chart.html")
-
-        chart = px.bar(
-            df["mut"].value_counts().head(10),
-            title="Top Mutations"
-        )
+        chart = px.bar(df["mut"].value_counts().head(10), title="Top Mutations")
         chart.write_html(chart_path)
 
         # -------------------------------
         # 🔥 Density
         heat_path = os.path.join(UPLOAD_FOLDER, "heatmap.html")
-
-        heat = px.histogram(
-            x=df["position"],
-            nbins=50,
-            title="Mutation Density"
-        )
+        heat = px.histogram(x=df["position"], nbins=50, title="Mutation Density")
         heat.write_html(heat_path)
 
         # -------------------------------
@@ -129,7 +123,6 @@ async def upload(request: Request, file: UploadFile = File(...)):
             "table": df_display.to_dict(orient="records"),
             "csv": "/uploads/report.csv",
 
-            # 🔥 NEW DATA
             "total_sequences": total_sequences,
             "total_mutations": total_mutations,
             "avg_length": avg_length,

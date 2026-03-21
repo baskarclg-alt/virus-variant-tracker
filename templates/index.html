@@ -1,37 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
+<title>Virus Tracker</title>
 <style>
-body {
-    background:#020617;
-    color:white;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    height:100vh;
-    font-family:Arial;
-}
-.box {
-    text-align:center;
-}
-button {
-    padding:10px;
-    margin-top:10px;
-}
+body {background:#020617;color:white;text-align:center;padding-top:100px;font-family:Arial;}
 </style>
 </head>
-
 <body>
 
-<div class="box">
 <h1>🧬 Virus Variant Tracker</h1>
 
 <form action="/upload" method="post" enctype="multipart/form-data">
-<input type="file" name="file"><br><br>
+<input type="file" name="file">
+<br><br>
 <button type="submit">Upload</button>
 </form>
-
-</div>
 
 </body>
 </html>
