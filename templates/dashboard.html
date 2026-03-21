@@ -1,217 +1,79 @@
 <!DOCTYPE html>
 <html>
 <head>
-
-<title>Virus Variant Tracker</title>
-
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
 <style>
-
-body{
-margin:0;
-font-family:Arial;
-background:#0f172a;
-color:white;
-}
-
-/* Sidebar */
-.sidebar{
-width:220px;
-height:100vh;
-position:fixed;
-background:#020617;
-padding:20px;
-}
-
-.sidebar a{
-display:block;
-color:white;
-text-decoration:none;
-margin:10px 0;
-padding:8px;
-border-radius:5px;
-cursor:pointer;
-}
-
-.sidebar a:hover{
-background:#334155;
-}
-
-/* Main */
-.main{
-margin-left:240px;
-padding:30px;
-}
-
-/* Cards */
-.card{
-background:#1e293b;
-color:white;
-border-radius:10px;
-padding:20px;
-}
-
-/* Images */
-img{
-width:100%;
-margin-top:20px;
-border-radius:8px;
-}
-
-/* iframe */
-iframe{
-width:100%;
-height:600px;
-border:none;
-margin-top:20px;
-}
-
+body {background:#020617;color:white;font-family:Arial;margin:0;}
+.header {padding:20px;text-align:center;background:#0f172a;font-size:22px;}
+.container {padding:20px;}
+.card {background:#1e293b;padding:15px;margin:10px;border-radius:10px;}
+.grid {display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+iframe {width:100%;height:350px;border:none;}
+table {width:100%;border-collapse:collapse;}
+th,td {padding:8px;border-bottom:1px solid #444;}
+tr:hover {background:#334155;}
 </style>
+
+<script>
+function showDetails(pos, ref, mut){
+    alert("Mutation: " + ref + pos + mut);
+}
+</script>
 
 </head>
 
 <body>
 
-<!-- Sidebar -->
-<div class="sidebar">
-<h3>🧬 Tracker</h3>
+<div class="header">🧬 Virus Variant Tracker</div>
 
-<a onclick="openTab('tab-table')">Mutation Table</a>
-<a onclick="openTab('tab-chart')">Chart</a>
-<a onclick="openTab('tab-heatmap')">Heatmap</a>
-<a onclick="openTab('tab-tree')">Tree</a>
+<div class="container">
 
-<hr>
-
-<a onclick="downloadReport()">⬇ Download Report</a>
-
-{% if results.chart %}
-<a href="{{ results.chart }}" download>⬇ Download Chart</a>
-{% endif %}
-
-{% if results.heatmap %}
-<a href="{{ results.heatmap }}" download>⬇ Download Heatmap</a>
-{% endif %}
-
-{% if results.tree_html %}
-<a href="{{ results.tree_html }}" download>⬇ Download Tree</a>
-{% endif %}
-
+<!-- 🔥 STATS -->
+<div class="grid">
+<div class="card">Total Sequences<br><b>{{total_sequences}}</b></div>
+<div class="card">Total Mutations<br><b>{{total_mutations}}</b></div>
+<div class="card">Avg Length<br><b>{{avg_length}}</b></div>
+<div class="card">Reference Length<br><b>{{ref_length}}</b></div>
 </div>
 
-<!-- Main -->
-<div class="main">
-
-<h2>Virus Variant Tracker</h2>
-
-<!-- Metrics -->
-<div class="row mb-4 text-center">
-
-<div class="col">
 <div class="card">
-<h6>Sequences</h6>
-<h3>{{ results.sequence_length }}</h3>
-</div>
+<h3>📊 Mutation Chart</h3>
+<iframe src="{{chart}}"></iframe>
 </div>
 
-<div class="col">
 <div class="card">
-<h6>Mutations</h6>
-<h3>{{ results.mutation_count }}</h3>
-</div>
+<h3>🔥 Mutation Density</h3>
+<iframe src="{{heatmap}}"></iframe>
 </div>
 
-<div class="col">
 <div class="card">
-<h6>Reference</h6>
-<h3>{{ results.reference_length }}</h3>
+<h3>🌳 Sequence Clustering</h3>
+{% if tree %}
+<img src="{{tree}}" width="100%">
+{% else %}
+<p>Tree not available</p>
+{% endif %}
 </div>
-</div>
 
-</div>
-
-<!-- Sections -->
-
-<div id="tab-table" class="tab-section">
-<h4>Mutation Table</h4>
-
-<table class="table table-dark table-bordered">
-<tr>
-<th>Position</th>
-<th>Reference</th>
-<th>Mutation</th>
-</tr>
-
-{% for m in results.mutation_table %}
-<tr>
-<td>{{ m.position }}</td>
-<td>{{ m.ref }}</td>
-<td>{{ m.mut }}</td>
+<div class="card">
+<h3>📋 Mutation Table (Top 100)</h3>
+<table>
+<tr><th>Pos</th><th>Ref</th><th>Mut</th></tr>
+{% for r in table %}
+<tr onclick="showDetails('{{r.position}}','{{r.ref}}','{{r.mut}}')">
+<td>{{r.position}}</td>
+<td>{{r.ref}}</td>
+<td>{{r.mut}}</td>
 </tr>
 {% endfor %}
-
 </table>
 </div>
 
-
-<div id="tab-chart" class="tab-section" style="display:none;">
-<h4>Chart</h4>
-{% if results.chart %}
-<img src="{{ results.chart }}">
-{% endif %}
-</div>
-
-
-<div id="tab-heatmap" class="tab-section" style="display:none;">
-<h4>Heatmap</h4>
-{% if results.heatmap %}
-<img src="{{ results.heatmap }}">
-{% endif %}
-</div>
-
-
-<div id="tab-tree" class="tab-section" style="display:none;">
-<h4>Tree</h4>
-{% if results.tree_html %}
-<iframe src="{{ results.tree_html }}"></iframe>
-{% endif %}
+<div class="card">
+<h3>📥 Download</h3>
+<a href="{{csv}}" download style="color:lightgreen;">Download CSV</a>
 </div>
 
 </div>
-
-<script>
-
-function openTab(tabId){
-let tabs = document.getElementsByClassName("tab-section");
-
-for(let i=0;i<tabs.length;i++){
-tabs[i].style.display="none";
-}
-
-document.getElementById(tabId).style.display="block";
-}
-
-function downloadReport(){
-
-let text = `
-Virus Variant Report
-
-Sequence: {{ results.sequence_name }}
-Length: {{ results.sequence_length }}
-Reference Length: {{ results.reference_length }}
-Mutation Count: {{ results.mutation_count }}
-`;
-
-let blob = new Blob([text], {type: "text/plain"});
-let link = document.createElement("a");
-
-link.href = URL.createObjectURL(blob);
-link.download = "report.txt";
-link.click();
-}
-
-</script>
 
 </body>
 </html>
