@@ -1,39 +1,29 @@
-<!DOCTYPE html>
-<html>
-<head>
-<title>Virus Variant Tracker</title>
-</head>
-
 <body style="background:#0b1220;color:white;font-family:sans-serif">
 
-<h1>🧬 Virus Variant Tracker</h1>
+<h1 style="text-align:center;">🧬 Virus Variant Tracker</h1>
 
-<p>Total Sequences: {{ total_sequences }}</p>
-<p>Total Mutations: {{ total_mutations }}</p>
-<p>Unique Mutations: {{ unique_mutations }}</p>
-<p>Avg Mutations: {{ avg_mutations }}</p>
+<div style="display:flex;gap:20px;justify-content:center;">
+<div>Total Sequences: {{ total_sequences }}</div>
+<div>Total Mutations: {{ total_mutations }}</div>
+<div>Unique Mutations: {{ unique_mutations }}</div>
+<div>Avg Mutations: {{ avg_mutations }}</div>
+</div>
 
 <hr>
 
 <h2>📊 Mutation Chart</h2>
 <iframe src="{{ chart }}" width="100%" height="400"></iframe>
-<a href="{{ chart }}" download>⬇ Download Chart</a>
 
 <h2>🔥 Mutation Density</h2>
 <iframe src="{{ heatmap }}" width="100%" height="400"></iframe>
-<a href="{{ heatmap }}" download>⬇ Download Heatmap</a>
 
 <h2>🌳 Phylogenetic Tree</h2>
-<img src="{{ tree }}" width="900">
-<a href="{{ tree }}" download>⬇ Download Tree</a>
-
-<h2>📁 Download Report</h2>
-<a href="{{ csv }}" download>⬇ Download CSV</a>
+<img src="{{ tree }}" width="100%" style="border-radius:10px">
 
 <hr>
 
 <h2>📍 Top Positions</h2>
-<table border="1">
+<table border="1" style="width:100%;text-align:center;">
 <tr><th>Position</th><th>Count</th></tr>
 {% for row in top_positions %}
 <tr><td>{{ row.Position }}</td><td>{{ row.Count }}</td></tr>
@@ -41,17 +31,15 @@
 </table>
 
 <h2>🧬 Top Mutation Types</h2>
-<table border="1">
+<table border="1" style="width:100%;text-align:center;">
 <tr><th>Mutation</th><th>Count</th></tr>
 {% for row in top_types %}
 <tr><td>{{ row.Mutation }}</td><td>{{ row.Count }}</td></tr>
 {% endfor %}
 </table>
 
-<hr>
-
 <h2>🧬 Lineage Clustering</h2>
-<table border="1">
+<table border="1" style="width:100%;text-align:center;">
 <tr><th>Lineage</th><th>Count</th></tr>
 {% for row in lineage_summary %}
 <tr>
@@ -59,7 +47,16 @@
 <td>{{ row.Count }}</td>
 </tr>
 {% endfor %}
+
+<h2>🧬 Variant Detection</h2>
+<table border="1">
+<tr><th>Sequence</th><th>Variant</th></tr>
+{% for row in variant_results %}
+<tr>
+<td>{{ row.Sequence }}</td>
+<td>{{ row.Variant }}</td>
+</tr>
+{% endfor %}
 </table>
 
 </body>
-</html>

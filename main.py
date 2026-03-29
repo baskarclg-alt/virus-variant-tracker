@@ -80,6 +80,26 @@ def safe_lineage(mut_counts):
         return ["Lineage-A"] * len(mut_counts)
 
 # -------------------------------
+# 🔥 FINAL VARIANT TRACKER (WORKING)
+def detect_variant(mut_types):
+
+    if len(mut_types) == 0:
+        return "No Mutation"
+
+    counts = pd.Series(mut_types).value_counts()
+
+    top = counts.head(3).index.tolist()
+
+    if "A>G" in top or "G>A" in top:
+        return "Omicron-like"
+    elif "T>C" in top:
+        return "Delta-like"
+    elif "C>T" in top:
+        return "Alpha-like"
+    else:
+        return "Other Variant"
+
+# -------------------------------
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -89,17 +109,15 @@ def home(request: Request):
 async def upload(request: Request, file: UploadFile = File(...)):
 
     try:
-        # 🔥 SAFE FILE SAVE (RENDER FRIENDLY)
         path = os.path.join(UPLOAD_FOLDER, file.filename)
 
         with open(path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
-        # 🔥 READ ONLY USER FILE
         sequences = list(SeqIO.parse(path, "fasta"))
 
         if len(sequences) == 0:
-            return HTMLResponse("❌ No sequences found in file")
+            return HTMLResponse("❌ No sequences found")
 
         ref = load_reference()
 
@@ -108,12 +126,10 @@ async def upload(request: Request, file: UploadFile = File(...)):
         table = []
         seq_vectors = []
         labels = []
+        variant_results = []
 
         for i, s in enumerate(sequences):
             seq = str(s.seq).upper()
-
-            if len(seq) == 0:
-                continue
 
             muts, t = find_mutations(ref, seq)
 
@@ -124,33 +140,32 @@ async def upload(request: Request, file: UploadFile = File(...)):
             seq_vectors.append([ord(c) for c in seq[:300]])
             labels.append(f"Seq{i+1}")
 
+            # 🔥 VARIANT DETECTION
+            mut_types = [m[1] for m in muts]
+            variant = detect_variant(mut_types)
+
+            variant_results.append({
+                "Sequence": f"Seq{i+1}",
+                "Variant": variant
+            })
+
         if len(table) == 0:
             return HTMLResponse("⚠️ No mutations detected")
 
         lineage_list = safe_lineage(mut_counts)
-
         df = pd.DataFrame(table)
 
-        # -------------------------------
         total_sequences = len(sequences)
         total_mutations = len(all_muts)
         unique_mutations = len(set(all_muts))
         avg_mutations = total_mutations // max(total_sequences, 1)
 
-        # -------------------------------
-        # 📊 Chart
         chart_path = os.path.join(UPLOAD_FOLDER, "chart.html")
-        fig1 = px.bar(df["type"].value_counts().head(10), title="Top Mutation Types")
-        fig1.write_html(chart_path)
+        px.bar(df["type"].value_counts().head(10)).write_html(chart_path)
 
-        # -------------------------------
-        # 🔥 Density
         heat_path = os.path.join(UPLOAD_FOLDER, "heatmap.html")
-        fig2 = px.histogram(df, x="position", nbins=50, title="Mutation Density")
-        fig2.write_html(heat_path)
+        px.histogram(df, x="position", nbins=50).write_html(heat_path)
 
-        # -------------------------------
-        # 🌳 Tree
         tree_path = os.path.join(UPLOAD_FOLDER, "tree.png")
 
         try:
@@ -158,16 +173,20 @@ async def upload(request: Request, file: UploadFile = File(...)):
                 X = np.array(seq_vectors[:10])
                 Z = linkage(X, method='ward')
 
-                plt.figure(figsize=(12, 5))
-                dendrogram(Z, labels=labels[:10])
+                plt.figure(figsize=(14, 8))
+                dendrogram(
+                    Z,
+                    labels=labels[:10],
+                    orientation='right',
+                    color_threshold=0.7 * max(Z[:, 2])
+                )
                 plt.title("Phylogenetic Tree")
                 plt.tight_layout()
-                plt.savefig(tree_path)
+                plt.savefig(tree_path, dpi=150)
                 plt.close()
         except:
             pass
 
-        # -------------------------------
         lineage_df = pd.DataFrame({"Lineage": lineage_list})
         lineage_summary = lineage_df.value_counts().reset_index(name="Count")
 
@@ -177,8 +196,8 @@ async def upload(request: Request, file: UploadFile = File(...)):
         top_types = df["type"].value_counts().head(10).reset_index()
         top_types.columns = ["Mutation", "Count"]
 
-        # -------------------------------
-        # SAVE CSV (NO AUTO DOWNLOAD)
+        variant_df = pd.DataFrame(variant_results)
+
         df.to_csv(os.path.join(UPLOAD_FOLDER, "report.csv"), index=False)
 
         return templates.TemplateResponse("dashboard.html", {
@@ -195,7 +214,8 @@ async def upload(request: Request, file: UploadFile = File(...)):
 
             "top_positions": top_positions.to_dict(orient="records"),
             "top_types": top_types.to_dict(orient="records"),
-            "lineage_summary": lineage_summary.to_dict(orient="records")
+            "lineage_summary": lineage_summary.to_dict(orient="records"),
+            "variant_results": variant_df.to_dict(orient="records")
         })
 
     except Exception as e:
