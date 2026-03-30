@@ -47,7 +47,6 @@ def find_mutations(ref, seq, limit=3000):
 
         if r != s:
             mut_type = f"{r}>{s}"
-
             muts.append((i+1, mut_type))
 
             table.append({
@@ -80,14 +79,12 @@ def safe_lineage(mut_counts):
         return ["Lineage-A"] * len(mut_counts)
 
 # -------------------------------
-# 🔥 FINAL VARIANT TRACKER (WORKING)
 def detect_variant(mut_types):
 
     if len(mut_types) == 0:
         return "No Mutation"
 
     counts = pd.Series(mut_types).value_counts()
-
     top = counts.head(3).index.tolist()
 
     if "A>G" in top or "G>A" in top:
@@ -140,7 +137,6 @@ async def upload(request: Request, file: UploadFile = File(...)):
             seq_vectors.append([ord(c) for c in seq[:300]])
             labels.append(f"Seq{i+1}")
 
-            # 🔥 VARIANT DETECTION
             mut_types = [m[1] for m in muts]
             variant = detect_variant(mut_types)
 
@@ -160,12 +156,15 @@ async def upload(request: Request, file: UploadFile = File(...)):
         unique_mutations = len(set(all_muts))
         avg_mutations = total_mutations // max(total_sequences, 1)
 
+        # Chart
         chart_path = os.path.join(UPLOAD_FOLDER, "chart.html")
         px.bar(df["type"].value_counts().head(10)).write_html(chart_path)
 
+        # Heatmap
         heat_path = os.path.join(UPLOAD_FOLDER, "heatmap.html")
         px.histogram(df, x="position", nbins=50).write_html(heat_path)
 
+        # 🌳 SMALL TREE (FINAL FIX)
         tree_path = os.path.join(UPLOAD_FOLDER, "tree.png")
 
         try:
@@ -173,23 +172,27 @@ async def upload(request: Request, file: UploadFile = File(...)):
                 X = np.array(seq_vectors[:10])
                 Z = linkage(X, method='ward')
 
-                plt.figure(figsize=(14, 8))
+                plt.figure(figsize=(10, 5))  # 🔥 small
+
                 dendrogram(
                     Z,
                     labels=labels[:10],
-                    orientation='right',
-                    color_threshold=0.7 * max(Z[:, 2])
+                    orientation='right'
                 )
+
                 plt.title("Phylogenetic Tree")
                 plt.tight_layout()
-                plt.savefig(tree_path, dpi=150)
+                plt.savefig(tree_path, dpi=120)
                 plt.close()
         except:
             pass
 
+        # Lineage summary
         lineage_df = pd.DataFrame({"Lineage": lineage_list})
-        lineage_summary = lineage_df.value_counts().reset_index(name="Count")
+        lineage_summary = lineage_df["Lineage"].value_counts().reset_index()
+        lineage_summary.columns = ["Lineage", "Count"]
 
+        # Tables
         top_positions = df["position"].value_counts().head(10).reset_index()
         top_positions.columns = ["Position", "Count"]
 
@@ -198,6 +201,7 @@ async def upload(request: Request, file: UploadFile = File(...)):
 
         variant_df = pd.DataFrame(variant_results)
 
+        # CSV
         df.to_csv(os.path.join(UPLOAD_FOLDER, "report.csv"), index=False)
 
         return templates.TemplateResponse("dashboard.html", {
