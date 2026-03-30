@@ -17,12 +17,18 @@
 
 <h2>📊 Mutation Chart</h2>
 <iframe src="{{ chart }}" width="100%" height="400"></iframe>
+<br><br>
+<a href="{{ chart }}" target="_blank">⬇ Download Chart</a>
 
 <h2>🔥 Mutation Density</h2>
 <iframe src="{{ heatmap }}" width="100%" height="400"></iframe>
+<br><br>
+<a href="{{ heatmap }}" target="_blank">⬇ Download Heatmap</a>
 
 <h2>🌳 Phylogenetic Tree</h2>
-<img src="{{ tree }}" width="100%">
+<img src="{{ tree }}" width="70%">
+<br><br>
+<a href="{{ tree }}" target="_blank">⬇ Download Tree</a>
 
 <hr>
 
@@ -37,8 +43,6 @@
 {% endfor %}
 </table>
 
-<hr>
-
 <h2>🧬 Variant Detection</h2>
 <table border="1" style="width:100%; text-align:center;">
 <tr><th>Sequence</th><th>Variant</th></tr>
@@ -49,6 +53,11 @@
 </tr>
 {% endfor %}
 </table>
+
+<hr>
+
+<h2>📁 Download Report</h2>
+<a href="{{ csv }}" target="_blank">⬇ Download CSV</a>
 
 </body>
 </html>

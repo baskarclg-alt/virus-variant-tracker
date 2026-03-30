@@ -10,6 +10,7 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.cluster.hierarchy import linkage, dendrogram
+import uuid  # 🔥 important
 
 app = FastAPI()
 
@@ -106,7 +107,9 @@ def home(request: Request):
 async def upload(request: Request, file: UploadFile = File(...)):
 
     try:
-        path = os.path.join(UPLOAD_FOLDER, file.filename)
+        unique_id = str(uuid.uuid4())[:8]  # 🔥 unique ID
+
+        path = os.path.join(UPLOAD_FOLDER, f"{unique_id}_{file.filename}")
 
         with open(path, "wb") as f:
             shutil.copyfileobj(file.file, f)
@@ -156,30 +159,27 @@ async def upload(request: Request, file: UploadFile = File(...)):
         unique_mutations = len(set(all_muts))
         avg_mutations = total_mutations // max(total_sequences, 1)
 
-        # Chart
-        chart_path = os.path.join(UPLOAD_FOLDER, "chart.html")
+        # chart
+        chart_file = f"{unique_id}_chart.html"
+        chart_path = os.path.join(UPLOAD_FOLDER, chart_file)
         px.bar(df["type"].value_counts().head(10)).write_html(chart_path)
 
-        # Heatmap
-        heat_path = os.path.join(UPLOAD_FOLDER, "heatmap.html")
+        # heatmap
+        heat_file = f"{unique_id}_heatmap.html"
+        heat_path = os.path.join(UPLOAD_FOLDER, heat_file)
         px.histogram(df, x="position", nbins=50).write_html(heat_path)
 
-        # 🌳 SMALL TREE (FINAL FIX)
-        tree_path = os.path.join(UPLOAD_FOLDER, "tree.png")
+        # 🌳 TREE FIX
+        tree_file = f"{unique_id}_tree.png"
+        tree_path = os.path.join(UPLOAD_FOLDER, tree_file)
 
         try:
             if len(seq_vectors) > 2:
                 X = np.array(seq_vectors[:10])
                 Z = linkage(X, method='ward')
 
-                plt.figure(figsize=(10, 5))  # 🔥 small
-
-                dendrogram(
-                    Z,
-                    labels=labels[:10],
-                    orientation='right'
-                )
-
+                plt.figure(figsize=(10, 5))
+                dendrogram(Z, labels=labels[:10], orientation='right')
                 plt.title("Phylogenetic Tree")
                 plt.tight_layout()
                 plt.savefig(tree_path, dpi=120)
@@ -187,12 +187,11 @@ async def upload(request: Request, file: UploadFile = File(...)):
         except:
             pass
 
-        # Lineage summary
+        # lineage
         lineage_df = pd.DataFrame({"Lineage": lineage_list})
         lineage_summary = lineage_df["Lineage"].value_counts().reset_index()
         lineage_summary.columns = ["Lineage", "Count"]
 
-        # Tables
         top_positions = df["position"].value_counts().head(10).reset_index()
         top_positions.columns = ["Position", "Count"]
 
@@ -202,14 +201,16 @@ async def upload(request: Request, file: UploadFile = File(...)):
         variant_df = pd.DataFrame(variant_results)
 
         # CSV
-        df.to_csv(os.path.join(UPLOAD_FOLDER, "report.csv"), index=False)
+        csv_file = f"{unique_id}_report.csv"
+        csv_path = os.path.join(UPLOAD_FOLDER, csv_file)
+        df.to_csv(csv_path, index=False)
 
         return templates.TemplateResponse("dashboard.html", {
             "request": request,
-            "chart": "/uploads/chart.html",
-            "heatmap": "/uploads/heatmap.html",
-            "tree": "/uploads/tree.png",
-            "csv": "/download/csv",
+            "chart": f"/uploads/{chart_file}",
+            "heatmap": f"/uploads/{heat_file}",
+            "tree": f"/uploads/{tree_file}",
+            "csv": f"/uploads/{csv_file}",
 
             "total_sequences": total_sequences,
             "total_mutations": total_mutations,
@@ -224,8 +225,3 @@ async def upload(request: Request, file: UploadFile = File(...)):
 
     except Exception as e:
         return HTMLResponse(f"❌ ERROR: {str(e)}")
-
-# -------------------------------
-@app.get("/download/csv")
-def download_csv():
-    return FileResponse("uploads/report.csv", filename="report.csv")
