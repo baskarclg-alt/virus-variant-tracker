@@ -2,14 +2,10 @@ from fastapi import FastAPI, UploadFile, File, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
-import os
-import shutil
-import uuid
-from collections import Counter
+import os, shutil, uuid
 from Bio import SeqIO
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import numpy as np
 from scipy.cluster.hierarchy import linkage, dendrogram
 from scipy.spatial.distance import pdist
@@ -17,7 +13,7 @@ from scipy.spatial.distance import pdist
 app = FastAPI()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 DATA_FOLDER = os.path.join(BASE_DIR, "data")
@@ -25,65 +21,64 @@ DATA_FOLDER = os.path.join(BASE_DIR, "data")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_FOLDER), name="uploads")
 
-VALID_BASES = set("ATGC")
-TREE_SEQ_LIMIT = 120
-HOTSPOT_LIMIT = 1000
 
-
-def load_reference():
-    ref_path = os.path.join(DATA_FOLDER, "reference.fasta")
-    ref_record = next(SeqIO.parse(ref_path, "fasta"))
-    return str(ref_record.seq).upper()
-
-
-def get_mutation_profile(ref, seq):
-    """
-    Returns:
-      positions: list of mismatch positions
-      mutation_types: list like A>T, C>G, etc.
-    Only valid nucleotide substitutions are counted.
-    """
-    positions = []
-    mutation_types = []
-
-    for i, (r, s) in enumerate(zip(ref, seq)):
-        if r in VALID_BASES and s in VALID_BASES and r != s:
-            positions.append(i)
-            mutation_types.append(f"{r}>{s}")
-
-    return positions, mutation_types
-
-
-def classify_variants_from_counts(mutation_counts):
-    """
-    Balanced, data-driven classification using ranks.
-    This avoids the 'all same variant' problem.
-    """
-    n = len(mutation_counts)
-    if n == 0:
-        return []
-
-    if n < 4 or len(set(mutation_counts)) == 1:
-        labels = ["Other Variant", "Alpha-like", "Delta-like", "Omicron-like"]
-        return [labels[i % 4] for i in range(n)]
-
-    ranks = pd.Series(mutation_counts).rank(method="first")
-    variant_series = pd.qcut(
-        ranks,
-        q=4,
-        labels=["Other Variant", "Alpha-like", "Delta-like", "Omicron-like"],
-        duplicates="drop"
-    )
-    return variant_series.astype(str).tolist()
-
-
+# -------------------------------
+# ✅ HOME ROUTE (FIX NOT FOUND)
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+# -------------------------------
+def load_reference():
+    ref_path = os.path.join(DATA_FOLDER, "reference.fasta")
+    ref = next(SeqIO.parse(ref_path, "fasta"))
+    return str(ref.seq).upper()
+
+
+# -------------------------------
+def get_mutations(ref, seq):
+    muts = []
+    pos = []
+
+    for i in range(min(len(ref), len(seq))):
+        r = ref[i]
+        s = seq[i]
+
+        if r in "ATGC" and s in "ATGC" and r != s:
+            muts.append(f"{r}>{s}_{i}")
+            pos.append(i)
+
+    return muts, pos
+
+
+# -------------------------------
+def classify_variants(mutation_counts):
+    df = pd.DataFrame({"count": mutation_counts})
+
+    q1 = df["count"].quantile(0.25)
+    q2 = df["count"].quantile(0.50)
+    q3 = df["count"].quantile(0.75)
+
+    variants = []
+
+    for c in mutation_counts:
+        if c <= q1:
+            variants.append("Alpha-like")
+        elif c <= q2:
+            variants.append("Delta-like")
+        elif c <= q3:
+            variants.append("Omicron-like")
+        else:
+            variants.append("Other Variant")
+
+    return variants
+
+
+# -------------------------------
 @app.post("/upload", response_class=HTMLResponse)
 async def upload(request: Request, file: UploadFile = File(...)):
+
     uid = str(uuid.uuid4())[:8]
     path = os.path.join(UPLOAD_FOLDER, f"{uid}_{file.filename}")
 
@@ -92,150 +87,111 @@ async def upload(request: Request, file: UploadFile = File(...)):
 
     ref = load_reference()
 
-    seq_labels = []
-    seq_positions = []
+    all_muts = []
+    all_pos = []
     mutation_counts = []
+    labels = []
 
-    position_counter = Counter()
-    mutation_type_counter = Counter()
-
-    total_sequences = 0
-
-    # -------- First pass: compute raw mutation profiles ----------
     for i, rec in enumerate(SeqIO.parse(path, "fasta")):
         seq = str(rec.seq).upper()
-        positions, mutation_types = get_mutation_profile(ref, seq)
 
-        seq_labels.append(f"S{i+1}")
-        seq_positions.append(set(positions))
-        mutation_counts.append(len(positions))
+        muts, pos = get_mutations(ref, seq)
 
-        position_counter.update(set(positions))
-        mutation_type_counter.update(mutation_types)
+        mutation_counts.append(len(muts))
+        all_muts.extend(muts)
+        all_pos.extend(pos)
 
-        total_sequences += 1
+        labels.append(f"S{i+1}")
 
-    if total_sequences == 0:
-        return HTMLResponse("No sequences found")
+    total_seq = len(labels)
+    total_mut = sum(mutation_counts)
+    unique_mut = len(set(all_muts))
+    avg_mut = int(np.mean(mutation_counts)) if total_seq > 0 else 0
 
-    # -------- Hotspot-based summary (makes numbers readable) ----------
-    top_positions = [p for p, _ in position_counter.most_common(min(HOTSPOT_LIMIT, len(position_counter)))]
-    if not top_positions:
-        top_positions = list(range(min(HOTSPOT_LIMIT, len(ref))))
-
-    top_set = set(top_positions)
-
-    hotspot_counts = [
-        sum(1 for p in pos_set if p in top_set)
-        for pos_set in seq_positions
-    ]
-
-    total_mutations = int(sum(hotspot_counts))
-    avg_mutations = int(np.mean(hotspot_counts)) if hotspot_counts else 0
-    unique_mutations = len(top_positions)
-
-    # -------- Variant table (balanced + data-driven) ----------
-    variant_labels = classify_variants_from_counts(hotspot_counts)
+    # ---------------- VARIANT
+    variants = classify_variants(mutation_counts)
 
     variant_df = pd.DataFrame({
-        "Sequence": seq_labels,
-        "Variant": variant_labels
+        "Sequence": labels,
+        "Variant": variants
     })
 
-    variant_summary = variant_df["Variant"].value_counts().reset_index()
-    variant_summary.columns = ["Variant", "Count"]
+    summary = variant_df["Variant"].value_counts().reset_index()
+    summary.columns = ["Variant", "Count"]
 
-    # -------- Tree: build from mutation-hotspot vectors ----------
-    vectors = []
-    for pos_set in seq_positions[:TREE_SEQ_LIMIT]:
-        vectors.append([1 if p in pos_set else 0 for p in top_positions])
-
+    # ---------------- TREE
     tree_file = f"{uid}_tree.html"
     tree_path = os.path.join(UPLOAD_FOLDER, tree_file)
 
-    if len(vectors) >= 2 and len(top_positions) >= 2:
-        X = np.array(vectors)
+    vectors = []
 
-        # Hierarchical clustering on binary mutation hotspot profiles
+    for rec in SeqIO.parse(path, "fasta"):
+        seq = str(rec.seq).upper()
+
+        vec = []
+        for i in range(min(len(ref), len(seq))):
+            r = ref[i]
+            s = seq[i]
+
+            if r in "ATGC" and s in "ATGC" and r != s:
+                vec.append(1)
+            else:
+                vec.append(0)
+
+        vectors.append(vec[:1000])
+
+    if len(vectors) > 2:
+        X = np.array(vectors[:100])
+
         dist = pdist(X, metric="hamming")
-        if len(dist) > 0:
-            Z = linkage(dist, method="average")
-            dendro = dendrogram(Z, labels=seq_labels[:len(X)], no_plot=True)
+        Z = linkage(dist, method='ward')
 
-            fig = go.Figure()
-            for i in range(len(dendro["icoord"])):
-                fig.add_trace(go.Scatter(
-                    x=dendro["dcoord"][i],
-                    y=dendro["icoord"][i],
-                    mode="lines",
-                    line=dict(color="lime", width=2),
-                    showlegend=False
-                ))
+        d = dendrogram(Z, labels=labels[:100], no_plot=True)
 
-            fig.update_layout(
-                template="plotly_dark",
-                height=900,
-                margin=dict(l=200, r=20, t=30, b=20),
-                yaxis=dict(
-                    tickmode="array",
-                    tickvals=[5 + 10 * i for i in range(len(seq_labels[:len(X)]))],
-                    ticktext=seq_labels[:len(X)]
-                )
-            )
-            fig.write_html(tree_path)
-        else:
-            tree_file = ""
-    else:
-        tree_file = ""
+        import plotly.graph_objects as go
+        fig = go.Figure()
 
-    # -------- Mutation chart ----------
+        for i in range(len(d['icoord'])):
+            fig.add_trace(go.Scatter(
+                x=d['dcoord'][i],
+                y=d['icoord'][i],
+                mode='lines',
+                line=dict(color="lime"),
+                showlegend=False
+            ))
+
+        fig.update_layout(template="plotly_dark", height=800)
+        fig.write_html(tree_path)
+
+    # ---------------- CHART
     chart_file = f"{uid}_chart.html"
-    chart_df = pd.DataFrame(
-        mutation_type_counter.most_common(10),
-        columns=["Mutation Type", "Count"]
-    )
 
-    if not chart_df.empty:
-        fig_chart = px.bar(
-            chart_df,
-            x="Mutation Type",
-            y="Count",
-            template="plotly_dark"
-        )
-        fig_chart.write_html(os.path.join(UPLOAD_FOLDER, chart_file))
-    else:
-        chart_file = ""
+    px.bar(pd.Series(all_muts).value_counts().head(10),
+           template="plotly_dark").write_html(os.path.join(UPLOAD_FOLDER, chart_file))
 
-    # -------- Heatmap ----------
+    # ---------------- HEATMAP
     heat_file = f"{uid}_heatmap.html"
-    if len(position_counter) > 0:
-        # Bin the genome into windows for a readable density plot
-        window = max(len(ref) // 20, 1)
-        bin_counter = Counter()
-        for pos, cnt in position_counter.items():
-            bin_counter[pos // window] += cnt
 
-        heat_df = pd.DataFrame(sorted(bin_counter.items()), columns=["Genome Region", "Mutation Density"])
+    heat_df = pd.DataFrame({"pos": all_pos})
+    heat_df["bin"] = heat_df["pos"] // 500
 
-        fig_heat = px.area(
-            heat_df,
-            x="Genome Region",
-            y="Mutation Density",
-            template="plotly_dark"
-        )
-        fig_heat.write_html(os.path.join(UPLOAD_FOLDER, heat_file))
-    else:
-        heat_file = ""
+    heat_counts = heat_df["bin"].value_counts().sort_index()
+
+    px.area(x=heat_counts.index,
+            y=heat_counts.values,
+            template="plotly_dark").write_html(os.path.join(UPLOAD_FOLDER, heat_file))
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "tree": f"/uploads/{tree_file}" if tree_file else "",
-        "chart": f"/uploads/{chart_file}" if chart_file else "",
-        "heatmap": f"/uploads/{heat_file}" if heat_file else "",
-        "total_sequences": total_sequences,
-        "total_mutations": total_mutations,
-        "unique_mutations": unique_mutations,
-        "avg_mutations": avg_mutations,
-        "variant_summary": variant_summary.to_dict(orient="records"),
-        "variant_details": variant_df.head(200).to_dict(orient="records")
+        "tree": f"/uploads/{tree_file}",
+        "chart": f"/uploads/{chart_file}",
+        "heatmap": f"/uploads/{heat_file}",
+
+        "total_sequences": total_seq,
+        "total_mutations": total_mut,
+        "unique_mutations": unique_mut,
+        "avg_mutations": avg_mut,
+
+        "variant_summary": summary.to_dict(orient="records"),
+        "variant_details": variant_df.to_dict(orient="records")
     })
