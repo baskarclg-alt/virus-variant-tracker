@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Virus Variant Tracker</title>
+
+    <style>
+        body {
+            background: #0b1220;
+            color: white;
+            font-family: Arial;
+            text-align: center;
+            padding-top: 100px;
+        }
+
+        h1 {
+            font-size: 40px;
+            margin-bottom: 20px;
+        }
+
+        form {
+            margin-top: 30px;
+        }
+
+        input {
+            padding: 10px;
+            margin: 10px;
+            background: #111827;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+
+        button {
+            padding: 12px 20px;
+            background: #22c55e;
+            border: none;
+            color: black;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #16a34a;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>🧬 Virus Variant Tracker</h1>
+
+    <p>Upload your FASTA sequence file for analysis</p>
+
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <br>
+        <button type="submit">Upload & Analyze</button>
+    </form>
+
+</body>
+</html>

@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+biopython
+pandas
+plotly
+matplotlib
+numpy
+scipy
+jinja2
+python-multipart

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<title>FASTA Result</title>
+</head>
+
+<body>
+
+<h1>Sequence Analysis Result</h1>
+
+<p>Sequence Name: {{ results["sequence_name"] }}</p>
+<p>Sequence Length: {{ results["sequence_length"] }}</p>
+<p>Mutations: {{ results["mutations"] }}</p>
+<p>Clade: {{ results["clade"] }}</p>
+<p>QC Score: {{ results["qc_score"] }}</p>
+
+<br>
+
+<a href="/">Upload Another FASTA</a>
+
+</body>
+</html>
